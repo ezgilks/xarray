@@ -2251,6 +2251,18 @@ class Variable(NamedArray[Any, Any, Hashable], AbstractArray, VariableArithmetic
                 pads[d] = (win - 1, 0)
 
         padded = var.pad(pads, mode="constant", constant_values=fill_value)
+        if is_chunked_array(padded._data) and self.chunksizes:
+            # Padding adds the fill values as separate chunks, and
+            # sliding_window_view trims ``window - 1`` elements from the last
+            # chunk only. Fold the padding into the last chunk beforehand so the
+            # result keeps the chunks of the input along the rolling dimensions.
+            padded = padded.chunk(
+                {
+                    d: (*self.chunksizes[d][:-1], self.chunksizes[d][-1] + win - 1)
+                    for d, win in zip(dim, window, strict=True)
+                    if d in self.chunksizes
+                }
+            )
         axis = self.get_axis_num(dim)
         new_dims = self.dims + tuple(window_dim)
         return Variable(

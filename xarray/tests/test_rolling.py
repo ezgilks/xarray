@@ -1019,3 +1019,19 @@ class TestDatasetRollingExp:
             match="Passing ``keep_attrs`` to ``rolling_exp`` has no effect.",
         ):
             ds_numpy.rolling_exp(time=10, keep_attrs=True)
+@requires_dask
+@pytest.mark.parametrize("center", [False, True])
+@pytest.mark.parametrize("chunks", [(20,), (10, 10), (7, 7, 6)])
+@pytest.mark.parametrize("window", [4, 5])
+def test_rolling_preserves_dask_chunks(center, chunks, window) -> None:
+    # GH11689
+    da = DataArray(
+        np.arange(100.0).reshape(5, 20), dims=("trial", "sample")
+    ).chunk(sample=chunks)
+
+    rolling = da.rolling(sample=window, center=center)
+    assert rolling.construct("window").chunksizes["sample"] == chunks
+
+    actual = rolling.mean()
+    assert actual.chunksizes["sample"] == chunks
+    assert_allclose(actual, da.compute().rolling(sample=window, center=center).mean())
